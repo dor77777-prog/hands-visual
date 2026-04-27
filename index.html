@@ -48,55 +48,6 @@
     background: radial-gradient(ellipse at center, transparent 38%, rgba(0,0,0,0.78) 100%);
   }
 
-  .status-banner {
-    position: fixed;
-    top: max(60px, env(safe-area-inset-top, 60px));
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 150;
-    background: rgba(8,12,32,0.92);
-    border: 2px solid #ffee5e;
-    box-shadow: 0 0 24px rgba(255,238,94,0.4);
-    color: #ffee5e;
-    font-family: 'VT323', monospace;
-    padding: 12px 20px;
-    text-align: left;
-    text-shadow: 0 0 6px currentColor;
-    line-height: 1.4;
-    max-width: calc(100vw - 24px);
-    min-width: min(420px, calc(100vw - 24px));
-    display: none;
-    pointer-events: none;
-  }
-  .status-banner.active { display: block; }
-  .status-banner .step {
-    font-size: 16px;
-    padding: 2px 0;
-    display: flex;
-    gap: 8px;
-    align-items: center;
-  }
-  .status-banner .step .icon {
-    width: 18px; text-align: center; font-weight: bold;
-  }
-  .status-banner .step.done   { color: #5eff8e; text-shadow: 0 0 6px #5eff8e; }
-  .status-banner .step.fail   { color: #ff4d6d; text-shadow: 0 0 6px #ff4d6d; }
-  .status-banner .step.pend   { color: #ffee5e; }
-  .status-banner .step.queued { color: rgba(94,234,255,0.5); }
-  .status-banner .err-line {
-    margin-top: 8px;
-    padding-top: 8px;
-    border-top: 1px solid rgba(255,77,109,0.3);
-    color: #ff8eae;
-    font-size: 14px;
-    word-break: break-word;
-  }
-  .status-banner .stats {
-    margin-top: 6px;
-    font-size: 14px;
-    color: rgba(94,234,255,0.7);
-  }
-
   .hud {
     position: fixed; z-index: 101; pointer-events: none;
     text-shadow: 0 0 8px currentColor; letter-spacing: 0.05em; line-height: 1.05;
@@ -272,8 +223,6 @@
     .hud-title { font-size: 14px; }
     .hud-line  { font-size: 13px; }
     .ctrl-btn { padding: 8px 10px; font-size: 13px; }
-    .status-banner { font-size: 14px; min-width: auto; }
-    .status-banner .step { font-size: 14px; }
   }
 </style>
 </head>
@@ -296,16 +245,6 @@
       <p class="he">צריך אחסון סטטי אמיתי ב־HTTPS. GitHub Gist מציג קוד, הוא לא מארח אפליקציה.</p>
     </div>
   </div>
-</div>
-
-<div class="status-banner" id="status-banner">
-  <div class="step queued" id="step-camera"><span class="icon">·</span><span>CAMERA</span></div>
-  <div class="step queued" id="step-import"><span class="icon">·</span><span>LOAD MEDIAPIPE LIB</span></div>
-  <div class="step queued" id="step-wasm"><span class="icon">·</span><span>LOAD WASM RUNTIME</span></div>
-  <div class="step queued" id="step-model"><span class="icon">·</span><span>LOAD HAND MODEL</span></div>
-  <div class="step queued" id="step-detect"><span class="icon">·</span><span>DETECT HANDS</span></div>
-  <div class="stats" id="status-stats"></div>
-  <div class="err-line" id="status-err" style="display:none"></div>
 </div>
 
 <div class="hud hud-tl">
@@ -401,14 +340,6 @@ let toastTimer = null;
 
 const $ = (id) => document.getElementById(id);
 const overlayEl = $('overlay');
-const banner = $('status-banner');
-const stepCamera = $('step-camera');
-const stepImport = $('step-import');
-const stepWasm = $('step-wasm');
-const stepModel = $('step-model');
-const stepDetect = $('step-detect');
-const statsEl = $('status-stats');
-const errLine = $('status-err');
 const fpsEl = $('hud-fps'), handsEl = $('hud-hands'), tensionEl = $('hud-tension');
 const modeEl = $('hud-mode');
 const demoBadge = $('demo-badge'), pausedBanner = $('paused-banner');
@@ -430,45 +361,13 @@ ctrlFs.addEventListener('click', toggleFullscreen);
 ctrlMenu.addEventListener('click', backToMenu);
 window.addEventListener('keydown', onKeyDown);
 
-function setStep(el, state, extra) {
-  el.classList.remove('queued', 'pend', 'done', 'fail');
-  el.classList.add(state);
-  const icon = el.querySelector('.icon');
-  if (state === 'done') icon.textContent = '✓';
-  else if (state === 'fail') icon.textContent = '✗';
-  else if (state === 'pend') icon.textContent = '◐';
-  else icon.textContent = '·';
-  const oldExtra = el.querySelector('.extra');
-  if (!extra && oldExtra) {
-    oldExtra.remove();
-    return;
-  }
-  if (extra) {
-    let extraEl = oldExtra;
-    if (!extraEl) {
-      extraEl = document.createElement('span');
-      extraEl.className = 'extra';
-      extraEl.style.opacity = '0.6';
-      extraEl.style.fontSize = '0.85em';
-      el.appendChild(extraEl);
-    }
-    extraEl.textContent = ` — ${extra}`;
-  }
-}
-
 function showStatusError(msg) {
   if (!firstError) firstError = msg;
-  errLine.style.display = 'block';
-  errLine.textContent = `ERROR: ${firstError.slice(0, 200)}`;
+  console.error(msg);
 }
 
 function appendStatusHint(msg) {
-  const hint = document.createElement('div');
-  hint.textContent = msg;
-  hint.style.marginTop = '6px';
-  hint.style.color = '#ffee5e';
-  hint.style.fontSize = '14px';
-  errLine.appendChild(hint);
+  console.warn(msg);
 }
 
 function getHostingProblemHint() {
@@ -527,11 +426,8 @@ window.windowResized = function windowResized() {
 
 async function startCamera(facingMode) {
   resetStatusSteps();
-  banner.classList.add('active');
-  setStep(stepCamera, 'pend', 'requesting...');
 
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    setStep(stepCamera, 'fail');
     showStatusError('Camera access requires HTTPS or http://localhost.');
     return;
   }
@@ -541,7 +437,6 @@ async function startCamera(facingMode) {
   try {
     stream = await getCameraStream(facing);
   } catch (err) {
-    setStep(stepCamera, 'fail');
     showStatusError(`getUserMedia: ${err.name || ''} ${err.message || err}`);
     return;
   }
@@ -562,7 +457,6 @@ async function startCamera(facingMode) {
   for (let i = 0; i < 40 && (!videoEl.videoWidth || videoEl.videoWidth === 0); i++) {
     await new Promise(r => setTimeout(r, 100));
   }
-  setStep(stepCamera, 'done', `${videoEl.videoWidth}x${videoEl.videoHeight}`);
 
   mode = 'camera';
   bgMode = 'video';
@@ -592,41 +486,33 @@ async function getCameraStream(facingMode) {
 }
 
 async function startHandTracking() {
-  setStep(stepImport, 'pend', 'fetching...');
   let HandLandmarker, FilesetResolver;
   try {
-    const { mod, url } = await importFirstWorkingModule(MP_CDN_BASES.map(base => `${base}/vision_bundle.mjs`));
+    const { mod } = await importFirstWorkingModule(MP_CDN_BASES.map(base => `${base}/vision_bundle.mjs`));
     HandLandmarker = mod.HandLandmarker;
     FilesetResolver = mod.FilesetResolver;
     if (!HandLandmarker || !FilesetResolver) throw new Error('exports missing from vision_bundle.mjs');
-    setStep(stepImport, 'done', new URL(url).hostname);
   } catch (err) {
-    setStep(stepImport, 'fail');
     surfaceAssetLoadFailure('import', err);
     return;
   }
 
-  setStep(stepWasm, 'pend', 'fetching...');
   let vision;
   try {
     const wasmBase = await resolveFirstReachableUrl(MP_CDN_BASES.map(base => `${base}/wasm/vision_wasm_internal.wasm`));
     const wasmRoot = wasmBase.replace(/\/vision_wasm_internal\.wasm$/, '');
     vision = await FilesetResolver.forVisionTasks(wasmRoot);
-    setStep(stepWasm, 'done', new URL(wasmRoot).hostname);
   } catch (err) {
-    setStep(stepWasm, 'fail');
     surfaceAssetLoadFailure('wasm', err);
     return;
   }
 
-  setStep(stepModel, 'pend', IS_MOBILE ? 'CPU...' : 'GPU...');
   let modelBuffer;
   try {
     const modelRes = await fetch(HAND_MODEL_URL, { mode: 'cors', cache: 'force-cache' });
     if (!modelRes.ok) throw new Error(`model fetch returned HTTP ${modelRes.status}`);
     modelBuffer = await modelRes.arrayBuffer();
   } catch (err) {
-    setStep(stepModel, 'fail');
     surfaceAssetLoadFailure('model fetch', err);
     return;
   }
@@ -642,25 +528,19 @@ async function startHandTracking() {
   try {
     if (IS_MOBILE) {
       handLandmarker = await HandLandmarker.createFromOptions(vision, opts('CPU'));
-      setStep(stepModel, 'done', 'CPU');
     } else {
       try {
         handLandmarker = await HandLandmarker.createFromOptions(vision, opts('GPU'));
-        setStep(stepModel, 'done', 'GPU');
       } catch (gpuErr) {
         console.warn('GPU failed, retrying CPU:', gpuErr);
-        setStep(stepModel, 'pend', 'GPU failed, retry CPU...');
         handLandmarker = await HandLandmarker.createFromOptions(vision, opts('CPU'));
-        setStep(stepModel, 'done', 'CPU (GPU fallback)');
       }
     }
   } catch (err) {
-    setStep(stepModel, 'fail');
     showStatusError(`model: ${err.name || ''} ${err.message || err}`);
     return;
   }
 
-  setStep(stepDetect, 'pend', 'waiting for hands...');
   mpReady = true;
   startFrameLoop();
 }
@@ -681,7 +561,6 @@ function startFrameLoop() {
         } catch (e) {
           if (!firstError) firstError = `detect: ${e.message || e.name || e}`;
           console.error('detect error:', e);
-          setStep(stepDetect, 'fail');
           showStatusError(firstError);
         }
       }
@@ -723,10 +602,6 @@ function processHandResults(results) {
   rawHands.left = l;
   rawHands.right = r;
   handsEl.textContent = `HANDS: ${handsArr.length}`;
-
-  if (totalResults >= 3) {
-    setStep(stepDetect, 'done', totalHandsSeen > 0 ? `${totalHandsSeen} hands seen` : 'show your hands');
-  }
 }
 
 function startDemo() {
@@ -740,7 +615,6 @@ function startDemo() {
   videoLabel.textContent = 'VIDEO';
   hideOverlay();
   controlBar.classList.add('active');
-  banner.classList.remove('active');
   requestWakeLock();
   toast('DEMO MODE');
 }
@@ -795,8 +669,6 @@ function backToMenu() {
   pausedBanner.classList.remove('active');
   demoBadge.classList.remove('active');
   controlBar.classList.remove('active');
-  banner.classList.remove('active');
-  errLine.style.display = 'none';
   pauseLabel.textContent = 'PAUSE';
   ctrlPause.classList.remove('toggle-on');
   ctrlVideo.classList.remove('toggle-on');
@@ -809,17 +681,6 @@ function backToMenu() {
 
 function resetStatusSteps() {
   firstError = '';
-  errLine.style.display = 'none';
-  statsEl.textContent = '';
-  ['step-camera','step-import','step-wasm','step-model','step-detect'].forEach(id => {
-    const el = $(id);
-    el.classList.remove('done','fail','pend');
-    el.classList.add('queued');
-    const icon = el.querySelector('.icon');
-    if (icon) icon.textContent = '·';
-    const extra = el.querySelector('.extra');
-    if (extra) extra.remove();
-  });
 }
 
 function togglePause() {
@@ -1099,12 +960,6 @@ window.draw = function draw() {
     tensionEl.textContent = `TENSION ${'█'.repeat(filled)}${'░'.repeat(8 - filled)}`;
   } else {
     tensionEl.textContent = 'TENSION ░░░░░░░░';
-  }
-
-  if (mode === 'camera' && banner.classList.contains('active')) {
-    const vw = videoEl ? videoEl.videoWidth : 0;
-    const vh = videoEl ? videoEl.videoHeight : 0;
-    statsEl.textContent = `VIDEO ${vw}x${vh}  ·  detect attempts ${totalDetectAttempts}  ·  results ${totalResults}  ·  hands seen ${totalHandsSeen}`;
   }
 };
 
