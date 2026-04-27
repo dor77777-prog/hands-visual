@@ -272,12 +272,13 @@ const STRING_COLORS = [
   [120, 200, 255], [255, 140, 220],
   [180, 130, 255], [120, 255, 200], [255, 200, 120], [140, 200, 255],
 ];
-const STRING_PAIRS = [
+const STRING_PAIRS_FULL = [
   [0, 0], [1, 1], [2, 2], [3, 3], [4, 4],
   [0, 4], [1, 3], [3, 1], [4, 0],
 ];
-const ROPE_SEGMENTS = 18;
-const TRAIL_LENGTH = 26;
+const STRING_PAIRS_LITE = [
+  [0, 0], [1, 1], [2, 2], [3, 3], [4, 4],
+];
 const HAND_CONNECTIONS = [
   [0,1],[1,2],[2,3],[3,4], [0,5],[5,6],[6,7],[7,8],
   [5,9],[9,10],[10,11],[11,12], [9,13],[13,14],[14,15],[15,16],
@@ -362,7 +363,7 @@ class VerletRope {
       p.x += vx;
       p.y += vy + gravity;
     }
-    for (let iter = 0; iter < 8; iter++) {
+    for (let iter = 0; iter < ROPE_ITER; iter++) {
       for (let i = 0; i < n - 1; i++) {
         const a = this.points[i];
         const b = this.points[i + 1];
@@ -391,6 +392,10 @@ const HAND_TEMPLATE = [
 const ua = navigator.userAgent || '';
 const IS_MOBILE = /iPhone|iPad|iPod|Android|Mobile/i.test(ua) || (navigator.maxTouchPoints > 1 && /Mac/.test(ua));
 const IS_IOS = /iPhone|iPad|iPod/i.test(ua) || (/Mac/.test(ua) && navigator.maxTouchPoints > 1);
+const STRING_PAIRS = IS_MOBILE ? STRING_PAIRS_LITE : STRING_PAIRS_FULL;
+const ROPE_SEGMENTS = IS_MOBILE ? 9 : 13;
+const ROPE_ITER = IS_MOBILE ? 3 : 5;
+const TRAIL_LENGTH = IS_MOBILE ? 10 : 18;
 const MP_VERSION = '0.10.18';
 const MP_CDN_BASES = [
   `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}`,
@@ -1159,7 +1164,7 @@ function drawHandSilhouette(landmarks, color) {
   const [r, g, b] = color;
   ctx.save();
   ctx.fillStyle = `rgba(${r},${g},${b},0.07)`;
-  ctx.shadowBlur = 28;
+  ctx.shadowBlur = IS_MOBILE ? 12 : 20;
   ctx.shadowColor = `rgb(${r},${g},${b})`;
   ctx.beginPath();
   for (let i = 0; i < PALM_HULL.length; i++) {
@@ -1170,46 +1175,49 @@ function drawHandSilhouette(landmarks, color) {
   ctx.fill();
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  ctx.shadowBlur = 26;
-  ctx.shadowColor = `rgb(${r},${g},${b})`;
-  ctx.strokeStyle = `rgba(${r},${g},${b},0.22)`;
-  ctx.lineWidth = 9;
-  strokeConnections(landmarks, ctx);
-  ctx.shadowBlur = 14;
+  ctx.shadowBlur = IS_MOBILE ? 8 : 12;
   ctx.strokeStyle = `rgba(${r},${g},${b},0.6)`;
-  ctx.lineWidth = 3.5;
+  ctx.lineWidth = 3.2;
   strokeConnections(landmarks, ctx);
-  ctx.shadowBlur = 6;
-  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-  ctx.lineWidth = 1.2;
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+  ctx.lineWidth = 1.1;
   strokeConnections(landmarks, ctx);
+  ctx.shadowBlur = IS_MOBILE ? 6 : 10;
+  ctx.shadowColor = `rgb(${r},${g},${b})`;
+  ctx.fillStyle = `rgb(${r},${g},${b})`;
+  ctx.beginPath();
   for (let i = 0; i < landmarks.length; i++) {
     const p = lmToScreen(landmarks[i]);
     const isTip = FINGERTIPS.includes(i);
-    const radius = isTip ? 5 : 3;
-    ctx.shadowBlur = 14;
-    ctx.shadowColor = `rgb(${r},${g},${b})`;
-    ctx.fillStyle = `rgb(${r},${g},${b})`;
-    ctx.beginPath();
+    const radius = isTip ? 4.5 : 2.5;
+    ctx.moveTo(p.x + radius, p.y);
     ctx.arc(p.x, p.y, radius, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.95)';
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, radius * 0.45, 0, TAU);
-    ctx.fill();
   }
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = 'rgba(255,255,255,0.95)';
+  ctx.beginPath();
+  for (let i = 0; i < landmarks.length; i++) {
+    const p = lmToScreen(landmarks[i]);
+    const isTip = FINGERTIPS.includes(i);
+    const radius = (isTip ? 4.5 : 2.5) * 0.45;
+    ctx.moveTo(p.x + radius, p.y);
+    ctx.arc(p.x, p.y, radius, 0, TAU);
+  }
+  ctx.fill();
   ctx.restore();
 }
 
 function strokeConnections(landmarks, ctx) {
+  ctx.beginPath();
   for (const [a, b] of HAND_CONNECTIONS) {
     const pa = lmToScreen(landmarks[a]);
     const pb = lmToScreen(landmarks[b]);
-    ctx.beginPath();
     ctx.moveTo(pa.x, pa.y);
     ctx.lineTo(pb.x, pb.y);
-    ctx.stroke();
   }
+  ctx.stroke();
 }
 
 function drawFingertipGlows(landmarks) {
@@ -1218,18 +1226,22 @@ function drawFingertipGlows(landmarks) {
   for (let f = 0; f < FINGERTIPS.length; f++) {
     const p = lmToScreen(landmarks[FINGERTIPS[f]]);
     const c = STRING_COLORS[f];
-    ctx.shadowBlur = 30;
+    ctx.shadowBlur = IS_MOBILE ? 12 : 22;
     ctx.shadowColor = `rgb(${c[0]},${c[1]},${c[2]})`;
     ctx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},0.55)`;
     ctx.beginPath();
-    ctx.arc(p.x, p.y, 8, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.95)';
-    ctx.shadowBlur = 8;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, 2.6, 0, TAU);
+    ctx.arc(p.x, p.y, 7, 0, TAU);
     ctx.fill();
   }
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = 'rgba(255,255,255,0.95)';
+  ctx.beginPath();
+  for (let f = 0; f < FINGERTIPS.length; f++) {
+    const p = lmToScreen(landmarks[FINGERTIPS[f]]);
+    ctx.moveTo(p.x + 2.4, p.y);
+    ctx.arc(p.x, p.y, 2.4, 0, TAU);
+  }
+  ctx.fill();
   ctx.restore();
 }
 
@@ -1240,19 +1252,16 @@ function drawTrails(handTrails) {
   ctx.lineJoin = 'round';
   for (let f = 0; f < 5; f++) {
     const pts = handTrails[f];
-    if (pts.length < 2) continue;
+    if (pts.length < 3) continue;
     const c = STRING_COLORS[f];
-    ctx.shadowBlur = 14;
+    ctx.shadowBlur = IS_MOBILE ? 6 : 10;
     ctx.shadowColor = `rgb(${c[0]},${c[1]},${c[2]})`;
-    for (let i = 1; i < pts.length; i++) {
-      const t = i / pts.length;
-      ctx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${t * 0.45})`;
-      ctx.lineWidth = t * 3.4;
-      ctx.beginPath();
-      ctx.moveTo(pts[i - 1].x, pts[i - 1].y);
-      ctx.lineTo(pts[i].x, pts[i].y);
-      ctx.stroke();
-    }
+    ctx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},0.42)`;
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.stroke();
   }
   ctx.restore();
 }
@@ -1260,47 +1269,44 @@ function drawTrails(handTrails) {
 function drawRope(rope, color, now, tension) {
   const ctx = drawingContext;
   const [r, g, b] = color;
-  const passes = [
-    { w: 12 + tension * 5, a: 0.16, blur: 32, white: false },
-    { w: 4.2 + tension * 1.6, a: 0.6, blur: 18, white: false },
-    { w: 1.3, a: 0.95, blur: 6, white: true },
-  ];
   ctx.save();
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  for (const cfg of passes) {
-    ctx.shadowBlur = cfg.blur;
-    ctx.shadowColor = `rgb(${r},${g},${b})`;
-    ctx.strokeStyle = cfg.white
-      ? `rgba(255,255,255,${cfg.a})`
-      : `rgba(${r},${g},${b},${cfg.a})`;
-    ctx.lineWidth = cfg.w;
-    ctx.beginPath();
-    ctx.moveTo(rope.points[0].x, rope.points[0].y);
-    for (let i = 1; i < rope.points.length - 1; i++) {
-      const p = rope.points[i];
-      const next = rope.points[i + 1];
-      const cx = (p.x + next.x) / 2;
-      const cy = (p.y + next.y) / 2;
-      ctx.quadraticCurveTo(p.x, p.y, cx, cy);
-    }
-    const last = rope.points[rope.points.length - 1];
-    ctx.lineTo(last.x, last.y);
-    ctx.stroke();
-  }
-  const u = (now * 0.0006) % 1;
-  const idx = Math.floor(u * (rope.points.length - 2)) + 1;
-  const p = rope.points[idx];
-  ctx.shadowBlur = 22;
+  ctx.shadowBlur = IS_MOBILE ? 10 : 14;
   ctx.shadowColor = `rgb(${r},${g},${b})`;
-  ctx.fillStyle = `rgba(${r},${g},${b},0.85)`;
+  ctx.strokeStyle = `rgba(${r},${g},${b},${0.55 + tension * 0.2})`;
+  ctx.lineWidth = 4 + tension * 2;
   ctx.beginPath();
-  ctx.arc(p.x, p.y, 3.2 + tension * 2, 0, TAU);
-  ctx.fill();
-  ctx.fillStyle = `rgba(255,255,255,0.95)`;
+  ctx.moveTo(rope.points[0].x, rope.points[0].y);
+  for (let i = 1; i < rope.points.length - 1; i++) {
+    const p = rope.points[i];
+    const next = rope.points[i + 1];
+    ctx.quadraticCurveTo(p.x, p.y, (p.x + next.x) / 2, (p.y + next.y) / 2);
+  }
+  const last = rope.points[rope.points.length - 1];
+  ctx.lineTo(last.x, last.y);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = `rgba(255,255,255,0.9)`;
+  ctx.lineWidth = 1.2;
   ctx.beginPath();
-  ctx.arc(p.x, p.y, 1.4 + tension * 0.9, 0, TAU);
-  ctx.fill();
+  ctx.moveTo(rope.points[0].x, rope.points[0].y);
+  for (let i = 1; i < rope.points.length - 1; i++) {
+    const p = rope.points[i];
+    const next = rope.points[i + 1];
+    ctx.quadraticCurveTo(p.x, p.y, (p.x + next.x) / 2, (p.y + next.y) / 2);
+  }
+  ctx.lineTo(last.x, last.y);
+  ctx.stroke();
+  if (!IS_MOBILE) {
+    const u = (now * 0.0006) % 1;
+    const idx = Math.floor(u * (rope.points.length - 2)) + 1;
+    const p = rope.points[idx];
+    ctx.fillStyle = `rgba(${r},${g},${b},0.85)`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 2.6 + tension * 1.4, 0, TAU);
+    ctx.fill();
+  }
   ctx.restore();
 }
 
@@ -1323,18 +1329,13 @@ function handlePinch(side, hand, color) {
     }
     const ctx = drawingContext;
     ctx.save();
-    ctx.shadowBlur = 28;
+    ctx.shadowBlur = IS_MOBILE ? 10 : 22;
     ctx.shadowColor = `rgb(${color[0]},${color[1]},${color[2]})`;
     ctx.strokeStyle = `rgba(255,255,255,0.85)`;
     ctx.lineWidth = 2;
     const r = 16 + Math.sin(millis() * 0.012) * 4;
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, TAU);
-    ctx.stroke();
-    ctx.strokeStyle = `rgba(${color[0]},${color[1]},${color[2]},0.5)`;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(cx, cy, r + 8, 0, TAU);
     ctx.stroke();
     ctx.restore();
   }
@@ -1368,6 +1369,7 @@ function spawnSparks(x, y, color, count = 3) {
 function updateParticles(frozen) {
   const ctx = drawingContext;
   ctx.save();
+  ctx.shadowBlur = 0;
   for (let i = particles.length - 1; i >= 0; i--) {
     const p = particles[i];
     if (!frozen) {
@@ -1385,16 +1387,12 @@ function updateParticles(frozen) {
     const [r, g, bl] = p.color;
     if (p.ring) {
       const radius = (1 - p.life) * 80;
-      ctx.shadowBlur = 25;
-      ctx.shadowColor = `rgb(${r},${g},${bl})`;
       ctx.strokeStyle = `rgba(${r},${g},${bl},${p.life * 0.85})`;
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(p.x, p.y, radius, 0, TAU);
       ctx.stroke();
     } else {
-      ctx.shadowBlur = 14;
-      ctx.shadowColor = `rgb(${r},${g},${bl})`;
       ctx.fillStyle = `rgba(${r},${g},${bl},${p.life})`;
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.size * p.life, 0, TAU);
