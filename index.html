@@ -1,0 +1,1362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no, maximum-scale=1.0" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="theme-color" content="#04061a" />
+<title>CAT'S CRADLE // NEON v2.7</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=Major+Mono+Display&display=swap" rel="stylesheet" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100vw; height: 100vh; overflow: hidden;
+    background: #04061a; color: #5eeaff;
+    font-family: 'VT323', monospace;
+    cursor: crosshair;
+    touch-action: none;
+    overscroll-behavior: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  #video {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    z-index: 0;
+    background: #000;
+    display: none;
+    transform: scaleX(-1);
+  }
+  #video.show { display: block; }
+  #video.no-mirror { transform: none; }
+
+  canvas { display: block; position: absolute; inset: 0; z-index: 1; }
+
+  .scanlines {
+    position: fixed; inset: 0; pointer-events: none; z-index: 100;
+    background: repeating-linear-gradient(0deg,
+      rgba(0,0,0,0)   0px, rgba(0,0,0,0)   2px,
+      rgba(0,0,0,0.22) 3px, rgba(0,0,0,0)   4px);
+    mix-blend-mode: multiply;
+  }
+  .vignette {
+    position: fixed; inset: 0; pointer-events: none; z-index: 99;
+    background: radial-gradient(ellipse at center, transparent 38%, rgba(0,0,0,0.78) 100%);
+  }
+
+  .status-banner {
+    position: fixed;
+    top: max(60px, env(safe-area-inset-top, 60px));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 150;
+    background: rgba(8,12,32,0.92);
+    border: 2px solid #ffee5e;
+    box-shadow: 0 0 24px rgba(255,238,94,0.4);
+    color: #ffee5e;
+    font-family: 'VT323', monospace;
+    padding: 12px 20px;
+    text-align: left;
+    text-shadow: 0 0 6px currentColor;
+    line-height: 1.4;
+    max-width: calc(100vw - 24px);
+    min-width: min(420px, calc(100vw - 24px));
+    display: none;
+    pointer-events: none;
+  }
+  .status-banner.active { display: block; }
+  .status-banner .step {
+    font-size: 16px;
+    padding: 2px 0;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .status-banner .step .icon {
+    width: 18px; text-align: center; font-weight: bold;
+  }
+  .status-banner .step.done   { color: #5eff8e; text-shadow: 0 0 6px #5eff8e; }
+  .status-banner .step.fail   { color: #ff4d6d; text-shadow: 0 0 6px #ff4d6d; }
+  .status-banner .step.pend   { color: #ffee5e; }
+  .status-banner .step.queued { color: rgba(94,234,255,0.5); }
+  .status-banner .err-line {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255,77,109,0.3);
+    color: #ff8eae;
+    font-size: 14px;
+    word-break: break-word;
+  }
+  .status-banner .stats {
+    margin-top: 6px;
+    font-size: 14px;
+    color: rgba(94,234,255,0.7);
+  }
+
+  .hud {
+    position: fixed; z-index: 101; pointer-events: none;
+    text-shadow: 0 0 8px currentColor; letter-spacing: 0.05em; line-height: 1.05;
+  }
+  .hud-tl { top: max(14px, env(safe-area-inset-top, 14px)); left: max(18px, env(safe-area-inset-left, 18px)); color: #5eeaff; }
+  .hud-tr { top: max(14px, env(safe-area-inset-top, 14px)); right: max(18px, env(safe-area-inset-right, 18px)); color: #ff5eff; text-align: right; }
+  .hud-bl { bottom: max(14px, env(safe-area-inset-bottom, 14px)); left: max(18px, env(safe-area-inset-left, 18px)); color: #ffee5e; }
+  .hud-br { bottom: max(14px, env(safe-area-inset-bottom, 14px)); right: max(18px, env(safe-area-inset-right, 18px)); color: #5eeaff; text-align: right; }
+  .hud-title { font-family: 'Major Mono Display', monospace; font-size: 18px; letter-spacing: 0.2em; }
+  .hud-line  { font-size: 16px; opacity: 0.78; }
+
+  .rec-indicator {
+    display: none; align-items: center; gap: 8px;
+    color: #ff4d6d; text-shadow: 0 0 10px #ff4d6d;
+    margin-top: 4px; font-size: 16px;
+  }
+  .rec-indicator.active { display: inline-flex; }
+  .rec-indicator .dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: #ff4d6d; box-shadow: 0 0 12px #ff4d6d;
+    animation: rec-pulse 1.1s ease-in-out infinite;
+  }
+  @keyframes rec-pulse {
+    0%,100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.35; transform: scale(0.7); }
+  }
+
+  .paused-banner, .demo-badge {
+    position: fixed; top: 50%; left: 50%;
+    transform: translate(-50%, -50%); z-index: 50;
+    pointer-events: none;
+    font-family: 'Major Mono Display', monospace;
+    letter-spacing: 0.4em;
+    display: none;
+  }
+  .paused-banner {
+    z-index: 95;
+    font-size: clamp(36px, 10vw, 120px);
+    color: rgba(255, 230, 94, 0.18);
+    text-shadow: 0 0 30px rgba(255, 230, 94, 0.25);
+  }
+  .demo-badge {
+    font-size: clamp(32px, 8vw, 90px);
+    color: rgba(255, 230, 94, 0.05);
+    text-shadow: 0 0 30px rgba(255, 230, 94, 0.1);
+  }
+  .paused-banner.active, .demo-badge.active { display: block; }
+
+  .control-bar {
+    position: fixed;
+    bottom: max(70px, calc(env(safe-area-inset-bottom, 0px) + 70px));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 110;
+    display: none;
+    gap: 6px; padding: 6px 8px;
+    background: rgba(8, 12, 32, 0.78);
+    border: 1px solid rgba(94, 234, 255, 0.28);
+    box-shadow: 0 0 22px rgba(94, 234, 255, 0.15);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    max-width: calc(100vw - 24px);
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .control-bar.active { display: flex; }
+  .ctrl-btn {
+    background: transparent; color: #5eeaff;
+    border: 1px solid rgba(94,234,255,0.32);
+    padding: 8px 12px;
+    font-family: 'VT323', monospace;
+    font-size: 15px; letter-spacing: 0.08em;
+    cursor: pointer; transition: all 0.15s;
+    text-shadow: 0 0 6px currentColor;
+    display: flex; align-items: center; gap: 5px;
+    justify-content: center;
+    touch-action: manipulation;
+  }
+  .ctrl-btn:hover, .ctrl-btn:active { background: rgba(94,234,255,0.15); }
+  .ctrl-btn.hidden { display: none; }
+  .ctrl-btn.rec-active {
+    background: rgba(255, 77, 109, 0.18);
+    color: #ff4d6d; border-color: rgba(255,77,109,0.7);
+  }
+  .ctrl-btn .cdot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: currentColor; box-shadow: 0 0 8px currentColor;
+  }
+  .ctrl-btn.rec-active .cdot { animation: rec-pulse 1.1s ease-in-out infinite; }
+  .ctrl-btn.toggle-on {
+    background: rgba(255, 230, 94, 0.14);
+    color: #ffee5e; border-color: rgba(255,230,94,0.7);
+  }
+  .ctrl-btn.warn { color: #ff8eae; border-color: rgba(255,142,174,0.4); }
+
+  .overlay {
+    position: fixed; inset: 0; z-index: 300;
+    display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(ellipse at center, rgba(15,18,50,0.9), rgba(4,6,26,0.98));
+    transition: opacity 0.5s ease;
+    padding: 20px;
+    overflow-y: auto;
+  }
+  .overlay.hidden { opacity: 0; pointer-events: none; }
+  .panel {
+    max-width: min(92vw, 560px);
+    padding: 28px 24px;
+    border: 1px solid rgba(94,234,255,0.35);
+    box-shadow: 0 0 40px rgba(94,234,255,0.18);
+    background: rgba(8,12,32,0.85);
+    text-align: center; margin: auto;
+  }
+  .panel h1 {
+    font-family: 'Major Mono Display', monospace;
+    font-size: clamp(24px, 5vw, 44px);
+    letter-spacing: 0.32em; color: #5eeaff;
+    text-shadow: 0 0 14px #00f0ff, 0 0 28px #00f0ff;
+    margin-bottom: 6px;
+  }
+  .panel .tag {
+    color: #ff5eff; text-shadow: 0 0 10px #ff5eff;
+    font-size: clamp(13px, 2.5vw, 18px);
+    letter-spacing: 0.25em; margin-bottom: 22px;
+  }
+  .panel p { font-size: clamp(16px, 2.6vw, 20px); line-height: 1.4; color: #b0e8ff; margin: 8px 0; }
+  .panel p.he { direction: rtl; font-size: clamp(17px, 2.8vw, 21px); }
+  .panel .btn-row {
+    display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 18px;
+  }
+  .btn {
+    font-family: 'VT323', monospace;
+    font-size: clamp(17px, 2.8vw, 21px);
+    letter-spacing: 0.18em;
+    padding: 11px 22px;
+    background: transparent; color: #5eeaff;
+    border: 1px solid #5eeaff;
+    box-shadow: 0 0 16px rgba(94,234,255,0.35);
+    text-shadow: 0 0 8px #00f0ff;
+    cursor: pointer; transition: all 0.18s ease;
+    touch-action: manipulation;
+  }
+  .btn:hover, .btn:active { background: rgba(94,234,255,0.12); }
+  .btn.alt {
+    color: #ff5eff; border-color: #ff5eff;
+    box-shadow: 0 0 16px rgba(255,94,255,0.35); text-shadow: 0 0 8px #ff5eff;
+  }
+  .btn.alt:hover, .btn.alt:active { background: rgba(255,94,255,0.12); }
+  .hint { margin-top: 16px; font-size: clamp(13px, 2.2vw, 16px); color: #7fa8c8; line-height: 1.4; }
+  .hint p.he { direction: rtl; }
+
+  .toast {
+    position: fixed;
+    bottom: max(140px, calc(env(safe-area-inset-bottom, 0px) + 140px));
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    z-index: 220;
+    background: rgba(8,12,32,0.92);
+    border: 1px solid rgba(94,234,255,0.5);
+    color: #5eeaff;
+    padding: 8px 18px;
+    font-family: 'VT323', monospace;
+    font-size: clamp(14px, 2.4vw, 18px);
+    text-shadow: 0 0 8px #00f0ff;
+    opacity: 0;
+    transition: all 0.3s ease;
+    pointer-events: none;
+    max-width: calc(100vw - 32px);
+    text-align: center;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  @media (max-width: 720px) {
+    .hud-title { font-size: 14px; }
+    .hud-line  { font-size: 13px; }
+    .ctrl-btn { padding: 8px 10px; font-size: 13px; }
+    .status-banner { font-size: 14px; min-width: auto; }
+    .status-banner .step { font-size: 14px; }
+  }
+</style>
+</head>
+<body>
+
+<video id="video" playsinline muted autoplay webkit-playsinline></video>
+
+<div id="overlay" class="overlay">
+  <div class="panel" id="panel-start">
+    <h1>CAT'S CRADLE</h1>
+    <div class="tag">// NEON HAND WEAVING //</div>
+    <p>Tap to begin. Your browser will request camera access.</p>
+    <p class="he">לחיצה כדי להתחיל. הדפדפן יבקש הרשאת מצלמה.</p>
+    <div class="btn-row">
+      <button class="btn" id="btn-start">▶ START WITH CAMERA</button>
+      <button class="btn alt" id="btn-demo">◐ DEMO MODE</button>
+    </div>
+    <div class="hint">
+      <p>Use a real HTTPS static host. GitHub Gist is a code viewer, not an app host.</p>
+      <p class="he">צריך אחסון סטטי אמיתי ב־HTTPS. GitHub Gist מציג קוד, הוא לא מארח אפליקציה.</p>
+    </div>
+  </div>
+</div>
+
+<div class="status-banner" id="status-banner">
+  <div class="step queued" id="step-camera"><span class="icon">·</span><span>CAMERA</span></div>
+  <div class="step queued" id="step-import"><span class="icon">·</span><span>LOAD MEDIAPIPE LIB</span></div>
+  <div class="step queued" id="step-wasm"><span class="icon">·</span><span>LOAD WASM RUNTIME</span></div>
+  <div class="step queued" id="step-model"><span class="icon">·</span><span>LOAD HAND MODEL</span></div>
+  <div class="step queued" id="step-detect"><span class="icon">·</span><span>DETECT HANDS</span></div>
+  <div class="stats" id="status-stats"></div>
+  <div class="err-line" id="status-err" style="display:none"></div>
+</div>
+
+<div class="hud hud-tl">
+  <div class="hud-title">CRDL.SYS</div>
+  <div class="hud-line">v2.7</div>
+</div>
+<div class="hud hud-tr">
+  <div class="hud-line" id="hud-fps">— FPS</div>
+  <div class="hud-line" id="hud-hands">HANDS: 0</div>
+  <div class="rec-indicator" id="rec-indicator">
+    <span class="dot"></span>
+    <span>REC <span id="rec-time">0:00</span></span>
+  </div>
+</div>
+<div class="hud hud-bl">
+  <div class="hud-line" id="hud-mode">MODE: IDLE</div>
+</div>
+<div class="hud hud-br">
+  <div class="hud-line" id="hud-tension">TENSION ░░░░░░░░</div>
+</div>
+
+<div class="demo-badge" id="demo-badge">DEMO</div>
+<div class="paused-banner" id="paused-banner">PAUSED</div>
+
+<div class="control-bar" id="control-bar">
+  <button class="ctrl-btn" id="ctrl-rec"><span class="cdot"></span><span>REC</span></button>
+  <button class="ctrl-btn" id="ctrl-pause"><span id="pause-label">PAUSE</span></button>
+  <button class="ctrl-btn" id="ctrl-cam"><span>⟳ CAM</span></button>
+  <button class="ctrl-btn" id="ctrl-video"><span id="video-label">VIDEO ON</span></button>
+  <button class="ctrl-btn" id="ctrl-snap"><span>SNAP</span></button>
+  <button class="ctrl-btn" id="ctrl-fs"><span>⛶ FS</span></button>
+  <button class="ctrl-btn warn" id="ctrl-menu"><span>⌂ MENU</span></button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="vignette"></div>
+<div class="scanlines"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/p5@1.9.4/lib/p5.min.js"></script>
+
+<script>
+const FINGERTIPS = [4, 8, 12, 16, 20];
+const STRING_COLORS = [
+  [ 94, 234, 255], [255,  94, 220], [255, 230,  94],
+  [120, 200, 255], [255, 140, 220],
+];
+const HAND_CONNECTIONS = [
+  [0,1],[1,2],[2,3],[3,4], [0,5],[5,6],[6,7],[7,8],
+  [5,9],[9,10],[10,11],[11,12], [9,13],[13,14],[14,15],[15,16],
+  [13,17],[17,18],[18,19],[19,20], [0,17],[5,17]
+];
+const PALM_HULL = [0, 1, 2, 5, 9, 13, 17];
+const HAND_TEMPLATE = [
+  { x:  0.00, y:  0.55 }, { x: -0.22, y:  0.42 }, { x: -0.36, y:  0.22 },
+  { x: -0.46, y:  0.04 }, { x: -0.52, y: -0.12 }, { x: -0.16, y:  0.05 },
+  { x: -0.18, y: -0.18 }, { x: -0.20, y: -0.38 }, { x: -0.22, y: -0.58 },
+  { x:  0.00, y:  0.00 }, { x:  0.00, y: -0.22 }, { x:  0.00, y: -0.46 },
+  { x:  0.00, y: -0.68 }, { x:  0.15, y:  0.04 }, { x:  0.18, y: -0.18 },
+  { x:  0.20, y: -0.40 }, { x:  0.22, y: -0.60 }, { x:  0.28, y:  0.16 },
+  { x:  0.32, y:  0.00 }, { x:  0.35, y: -0.16 }, { x:  0.37, y: -0.32 },
+];
+
+const ua = navigator.userAgent || '';
+const IS_MOBILE = /iPhone|iPad|iPod|Android|Mobile/i.test(ua) || (navigator.maxTouchPoints > 1 && /Mac/.test(ua));
+const IS_IOS = /iPhone|iPad|iPod/i.test(ua) || (/Mac/.test(ua) && navigator.maxTouchPoints > 1);
+const MP_VERSION = '0.10.18';
+const MP_CDN_BASES = [
+  `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}`,
+  `https://unpkg.com/@mediapipe/tasks-vision@${MP_VERSION}`,
+];
+const HAND_MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
+const UNSUPPORTED_HOSTS = new Set(['gist.github.com', 'gist.githubusercontent.com']);
+
+let videoEl;
+let handLandmarker = null;
+let mpReady = false;
+let mediaStream = null;
+let mode = 'idle', paused = false, bgMode = 'hidden', recording = false, facing = 'user';
+let rawHands = { left: null, right: null };
+let smoothedHands = { left: null, right: null };
+let particles = [];
+let touchCooldown = [0, 0, 0, 0, 0];
+let frameCounter = 0, lastFpsAt = 0, fps = 0;
+let frameLoopActive = false;
+let totalDetectAttempts = 0, totalResults = 0, totalHandsSeen = 0, lastResultAt = 0;
+let firstError = '';
+let mediaRecorder = null, recordedChunks = [];
+let recordStartTime = 0, recTimerInterval = null;
+let wakeLock = null;
+let drawVideoOnCanvasForRecording = false;
+let toastTimer = null;
+
+const $ = (id) => document.getElementById(id);
+const overlayEl = $('overlay');
+const banner = $('status-banner');
+const stepCamera = $('step-camera');
+const stepImport = $('step-import');
+const stepWasm = $('step-wasm');
+const stepModel = $('step-model');
+const stepDetect = $('step-detect');
+const statsEl = $('status-stats');
+const errLine = $('status-err');
+const fpsEl = $('hud-fps'), handsEl = $('hud-hands'), tensionEl = $('hud-tension');
+const modeEl = $('hud-mode');
+const demoBadge = $('demo-badge'), pausedBanner = $('paused-banner');
+const controlBar = $('control-bar');
+const recIndicator = $('rec-indicator'), recTimeEl = $('rec-time');
+const toastEl = $('toast');
+const ctrlRec = $('ctrl-rec'), ctrlPause = $('ctrl-pause'), ctrlCam = $('ctrl-cam');
+const ctrlVideo = $('ctrl-video'), ctrlSnap = $('ctrl-snap'), ctrlFs = $('ctrl-fs'), ctrlMenu = $('ctrl-menu');
+const pauseLabel = $('pause-label'), videoLabel = $('video-label');
+
+$('btn-start').addEventListener('click', () => startCamera('user'));
+$('btn-demo').addEventListener('click', startDemo);
+ctrlRec.addEventListener('click', toggleRecording);
+ctrlPause.addEventListener('click', togglePause);
+ctrlCam.addEventListener('click', flipCamera);
+ctrlVideo.addEventListener('click', toggleVideoBg);
+ctrlSnap.addEventListener('click', takeSnapshot);
+ctrlFs.addEventListener('click', toggleFullscreen);
+ctrlMenu.addEventListener('click', backToMenu);
+window.addEventListener('keydown', onKeyDown);
+
+function setStep(el, state, extra) {
+  el.classList.remove('queued', 'pend', 'done', 'fail');
+  el.classList.add(state);
+  const icon = el.querySelector('.icon');
+  if (state === 'done') icon.textContent = '✓';
+  else if (state === 'fail') icon.textContent = '✗';
+  else if (state === 'pend') icon.textContent = '◐';
+  else icon.textContent = '·';
+  const oldExtra = el.querySelector('.extra');
+  if (!extra && oldExtra) {
+    oldExtra.remove();
+    return;
+  }
+  if (extra) {
+    let extraEl = oldExtra;
+    if (!extraEl) {
+      extraEl = document.createElement('span');
+      extraEl.className = 'extra';
+      extraEl.style.opacity = '0.6';
+      extraEl.style.fontSize = '0.85em';
+      el.appendChild(extraEl);
+    }
+    extraEl.textContent = ` — ${extra}`;
+  }
+}
+
+function showStatusError(msg) {
+  if (!firstError) firstError = msg;
+  errLine.style.display = 'block';
+  errLine.textContent = `ERROR: ${firstError.slice(0, 200)}`;
+}
+
+function appendStatusHint(msg) {
+  const hint = document.createElement('div');
+  hint.textContent = msg;
+  hint.style.marginTop = '6px';
+  hint.style.color = '#ffee5e';
+  hint.style.fontSize = '14px';
+  errLine.appendChild(hint);
+}
+
+function getHostingProblemHint() {
+  const host = window.location.hostname;
+  if (UNSUPPORTED_HOSTS.has(host)) {
+    return 'GitHub Gist is a code viewer, not an app host. Use GitHub Pages, Netlify, Vercel, Cloudflare Pages, or RawGithack for this HTML.';
+  }
+  if (host.endsWith('githubusercontent.com')) {
+    return 'Raw GitHub/Gist URLs are served as plain text and are blocked for executable HTML/JS. Serve this file from a real static host.';
+  }
+  return '';
+}
+
+async function importFirstWorkingModule(urls) {
+  let lastErr = null;
+  for (const url of urls) {
+    try {
+      return { mod: await import(url), url };
+    } catch (err) {
+      lastErr = err;
+      console.warn('MediaPipe import failed:', url, err);
+    }
+  }
+  throw lastErr || new Error('No MediaPipe module URL worked');
+}
+
+async function resolveFirstReachableUrl(urls) {
+  let lastErr = null;
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, { mode: 'cors', cache: 'force-cache' });
+      if (res.ok) return url;
+      lastErr = new Error(`${url} returned HTTP ${res.status}`);
+    } catch (err) {
+      lastErr = err;
+      console.warn('MediaPipe asset fetch failed:', url, err);
+    }
+  }
+  throw lastErr || new Error('No MediaPipe asset URL worked');
+}
+
+function surfaceAssetLoadFailure(stage, err) {
+  const hint = getHostingProblemHint();
+  showStatusError(`${stage}: ${err.name || ''} ${err.message || err}`);
+  if (hint) appendStatusHint(hint);
+}
+
+window.setup = function setup() {
+  createCanvas(windowWidth, windowHeight);
+  pixelDensity(IS_MOBILE ? 1 : Math.min(2, window.devicePixelRatio || 1));
+};
+
+window.windowResized = function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+};
+
+async function startCamera(facingMode) {
+  resetStatusSteps();
+  banner.classList.add('active');
+  setStep(stepCamera, 'pend', 'requesting...');
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    setStep(stepCamera, 'fail');
+    showStatusError('Camera access requires HTTPS or http://localhost.');
+    return;
+  }
+  facing = facingMode || 'user';
+
+  let stream;
+  try {
+    stream = await getCameraStream(facing);
+  } catch (err) {
+    setStep(stepCamera, 'fail');
+    showStatusError(`getUserMedia: ${err.name || ''} ${err.message || err}`);
+    return;
+  }
+  mediaStream = stream;
+
+  videoEl = $('video');
+  videoEl.muted = true;
+  videoEl.playsInline = true;
+  videoEl.setAttribute('playsinline', '');
+  videoEl.setAttribute('webkit-playsinline', '');
+  videoEl.setAttribute('muted', '');
+  videoEl.classList.toggle('no-mirror', facing !== 'user');
+  videoEl.srcObject = stream;
+  videoEl.classList.add('show');
+
+  try { await videoEl.play(); } catch (e) { console.warn('video.play() rejected:', e); }
+
+  for (let i = 0; i < 40 && (!videoEl.videoWidth || videoEl.videoWidth === 0); i++) {
+    await new Promise(r => setTimeout(r, 100));
+  }
+  setStep(stepCamera, 'done', `${videoEl.videoWidth}x${videoEl.videoHeight}`);
+
+  mode = 'camera';
+  bgMode = 'video';
+  ctrlVideo.classList.add('toggle-on');
+  videoLabel.textContent = 'VIDEO ON';
+  ctrlCam.classList.remove('hidden');
+  modeEl.textContent = `MODE: LIVE (${facing === 'user' ? 'FRONT' : 'BACK'})`;
+  hideOverlay();
+  controlBar.classList.add('active');
+  requestWakeLock();
+  toast('CAMERA ACTIVE');
+  startHandTracking();
+}
+
+async function getCameraStream(facingMode) {
+  const tries = [
+    { video: { facingMode, width: { ideal: IS_MOBILE ? 640 : 1280 }, height: { ideal: IS_MOBILE ? 480 : 720 } }, audio: false },
+    { video: { facingMode }, audio: false },
+    { video: true, audio: false },
+  ];
+  let lastErr = null;
+  for (const constraints of tries) {
+    try { return await navigator.mediaDevices.getUserMedia(constraints); }
+    catch (e) { lastErr = e; }
+  }
+  throw lastErr;
+}
+
+async function startHandTracking() {
+  setStep(stepImport, 'pend', 'fetching...');
+  let HandLandmarker, FilesetResolver;
+  try {
+    const { mod, url } = await importFirstWorkingModule(MP_CDN_BASES.map(base => `${base}/vision_bundle.mjs`));
+    HandLandmarker = mod.HandLandmarker;
+    FilesetResolver = mod.FilesetResolver;
+    if (!HandLandmarker || !FilesetResolver) throw new Error('exports missing from vision_bundle.mjs');
+    setStep(stepImport, 'done', new URL(url).hostname);
+  } catch (err) {
+    setStep(stepImport, 'fail');
+    surfaceAssetLoadFailure('import', err);
+    return;
+  }
+
+  setStep(stepWasm, 'pend', 'fetching...');
+  let vision;
+  try {
+    const wasmBase = await resolveFirstReachableUrl(MP_CDN_BASES.map(base => `${base}/wasm/vision_wasm_internal.wasm`));
+    const wasmRoot = wasmBase.replace(/\/vision_wasm_internal\.wasm$/, '');
+    vision = await FilesetResolver.forVisionTasks(wasmRoot);
+    setStep(stepWasm, 'done', new URL(wasmRoot).hostname);
+  } catch (err) {
+    setStep(stepWasm, 'fail');
+    surfaceAssetLoadFailure('wasm', err);
+    return;
+  }
+
+  setStep(stepModel, 'pend', IS_MOBILE ? 'CPU...' : 'GPU...');
+  let modelBuffer;
+  try {
+    const modelRes = await fetch(HAND_MODEL_URL, { mode: 'cors', cache: 'force-cache' });
+    if (!modelRes.ok) throw new Error(`model fetch returned HTTP ${modelRes.status}`);
+    modelBuffer = await modelRes.arrayBuffer();
+  } catch (err) {
+    setStep(stepModel, 'fail');
+    surfaceAssetLoadFailure('model fetch', err);
+    return;
+  }
+  const opts = (delegate) => ({
+    baseOptions: { modelAssetBuffer: new Uint8Array(modelBuffer), delegate },
+    numHands: 2,
+    runningMode: 'VIDEO',
+    minHandDetectionConfidence: 0.5,
+    minHandPresenceConfidence: 0.5,
+    minTrackingConfidence: 0.5,
+  });
+
+  try {
+    if (IS_MOBILE) {
+      handLandmarker = await HandLandmarker.createFromOptions(vision, opts('CPU'));
+      setStep(stepModel, 'done', 'CPU');
+    } else {
+      try {
+        handLandmarker = await HandLandmarker.createFromOptions(vision, opts('GPU'));
+        setStep(stepModel, 'done', 'GPU');
+      } catch (gpuErr) {
+        console.warn('GPU failed, retrying CPU:', gpuErr);
+        setStep(stepModel, 'pend', 'GPU failed, retry CPU...');
+        handLandmarker = await HandLandmarker.createFromOptions(vision, opts('CPU'));
+        setStep(stepModel, 'done', 'CPU (GPU fallback)');
+      }
+    }
+  } catch (err) {
+    setStep(stepModel, 'fail');
+    showStatusError(`model: ${err.name || ''} ${err.message || err}`);
+    return;
+  }
+
+  setStep(stepDetect, 'pend', 'waiting for hands...');
+  mpReady = true;
+  startFrameLoop();
+}
+
+function startFrameLoop() {
+  if (frameLoopActive) return;
+  frameLoopActive = true;
+  let lastVideoTime = -1;
+  const loop = () => {
+    if (!frameLoopActive) return;
+    if (!paused && handLandmarker && videoEl && videoEl.readyState >= 2 && videoEl.videoWidth > 0) {
+      if (videoEl.currentTime !== lastVideoTime) {
+        lastVideoTime = videoEl.currentTime;
+        try {
+          totalDetectAttempts++;
+          const results = handLandmarker.detectForVideo(videoEl, performance.now());
+          processHandResults(results);
+        } catch (e) {
+          if (!firstError) firstError = `detect: ${e.message || e.name || e}`;
+          console.error('detect error:', e);
+          setStep(stepDetect, 'fail');
+          showStatusError(firstError);
+        }
+      }
+    }
+    requestAnimationFrame(loop);
+  };
+  requestAnimationFrame(loop);
+}
+
+function stopFrameLoop() {
+  frameLoopActive = false;
+}
+
+function processHandResults(results) {
+  totalResults++;
+  lastResultAt = performance.now();
+  if (paused) return;
+
+  const handsArr = results.landmarks || [];
+  const handedness = results.handedness || results.handednesses || [];
+
+  if (handsArr.length > 0) totalHandsSeen += handsArr.length;
+
+  let l = null, r = null;
+  const swap = (facing === 'user');
+  for (let i = 0; i < handsArr.length; i++) {
+    const cat = handedness[i] && handedness[i][0];
+    const label = cat ? cat.categoryName : null;
+    if (label === 'Right') {
+      if (swap) l = handsArr[i]; else r = handsArr[i];
+    } else if (label === 'Left') {
+      if (swap) r = handsArr[i]; else l = handsArr[i];
+    } else if (!l) {
+      l = handsArr[i];
+    } else {
+      r = handsArr[i];
+    }
+  }
+  rawHands.left = l;
+  rawHands.right = r;
+  handsEl.textContent = `HANDS: ${handsArr.length}`;
+
+  if (totalResults >= 3) {
+    setStep(stepDetect, 'done', totalHandsSeen > 0 ? `${totalHandsSeen} hands seen` : 'show your hands');
+  }
+}
+
+function startDemo() {
+  mode = 'demo';
+  modeEl.textContent = 'MODE: DEMO';
+  demoBadge.classList.add('active');
+  ctrlCam.classList.add('hidden');
+  if (videoEl) videoEl.classList.remove('show');
+  bgMode = 'hidden';
+  ctrlVideo.classList.remove('toggle-on');
+  videoLabel.textContent = 'VIDEO';
+  hideOverlay();
+  controlBar.classList.add('active');
+  banner.classList.remove('active');
+  requestWakeLock();
+  toast('DEMO MODE');
+}
+
+function hideOverlay() {
+  overlayEl.classList.add('hidden');
+}
+
+async function flipCamera() {
+  if (mode !== 'camera') { toast('FLIP: CAMERA ONLY'); return; }
+  const next = facing === 'user' ? 'environment' : 'user';
+  toast(`SWITCHING TO ${next === 'user' ? 'FRONT' : 'BACK'}...`);
+  if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
+  let stream = null;
+  try {
+    stream = await getCameraStream(next);
+  } catch (err) {
+    toast(`FLIP FAILED: ${err.name || 'error'}`);
+    try {
+      mediaStream = await getCameraStream(facing);
+      videoEl.srcObject = mediaStream;
+      await videoEl.play().catch(() => {});
+    } catch (_) {}
+    return;
+  }
+  mediaStream = stream;
+  videoEl.srcObject = mediaStream;
+  videoEl.classList.toggle('no-mirror', next !== 'user');
+  try { await videoEl.play(); } catch (_) {}
+  facing = next;
+  modeEl.textContent = `MODE: LIVE (${facing === 'user' ? 'FRONT' : 'BACK'})`;
+  toast(`CAMERA: ${facing === 'user' ? 'FRONT' : 'BACK'}`);
+}
+
+function backToMenu() {
+  if (recording) stopRecording();
+  stopFrameLoop();
+  if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
+  if (videoEl) {
+    videoEl.srcObject = null;
+    videoEl.classList.remove('show');
+    videoEl.classList.remove('no-mirror');
+  }
+  releaseWakeLock();
+  mode = 'idle'; paused = false; bgMode = 'hidden';
+  rawHands = { left: null, right: null };
+  smoothedHands = { left: null, right: null };
+  particles = [];
+  totalResults = 0; totalDetectAttempts = 0; totalHandsSeen = 0; lastResultAt = 0; firstError = '';
+
+  modeEl.textContent = 'MODE: IDLE';
+  pausedBanner.classList.remove('active');
+  demoBadge.classList.remove('active');
+  controlBar.classList.remove('active');
+  banner.classList.remove('active');
+  errLine.style.display = 'none';
+  pauseLabel.textContent = 'PAUSE';
+  ctrlPause.classList.remove('toggle-on');
+  ctrlVideo.classList.remove('toggle-on');
+  ctrlCam.classList.remove('hidden');
+  videoLabel.textContent = 'VIDEO ON';
+  handsEl.textContent = 'HANDS: 0';
+  resetStatusSteps();
+  overlayEl.classList.remove('hidden');
+}
+
+function resetStatusSteps() {
+  firstError = '';
+  errLine.style.display = 'none';
+  statsEl.textContent = '';
+  ['step-camera','step-import','step-wasm','step-model','step-detect'].forEach(id => {
+    const el = $(id);
+    el.classList.remove('done','fail','pend');
+    el.classList.add('queued');
+    const icon = el.querySelector('.icon');
+    if (icon) icon.textContent = '·';
+    const extra = el.querySelector('.extra');
+    if (extra) extra.remove();
+  });
+}
+
+function togglePause() {
+  if (mode === 'idle') return;
+  paused = !paused;
+  pauseLabel.textContent = paused ? 'RESUME' : 'PAUSE';
+  ctrlPause.classList.toggle('toggle-on', paused);
+  pausedBanner.classList.toggle('active', paused);
+  if (mode === 'camera' && videoEl) {
+    if (paused) videoEl.pause(); else videoEl.play().catch(() => {});
+  }
+  toast(paused ? 'PAUSED' : 'RESUMED');
+}
+
+function toggleVideoBg() {
+  if (mode !== 'camera') { toast('VIDEO BG: CAMERA ONLY'); return; }
+  bgMode = (bgMode === 'video') ? 'hidden' : 'video';
+  ctrlVideo.classList.toggle('toggle-on', bgMode === 'video');
+  videoLabel.textContent = bgMode === 'video' ? 'VIDEO ON' : 'VIDEO OFF';
+  toast(bgMode === 'video' ? 'VIDEO BG ON' : 'VIDEO BG OFF');
+}
+
+function toggleRecording() {
+  if (mode === 'idle') { toast('START SESSION FIRST'); return; }
+  if (recording) stopRecording(); else startRecording();
+}
+
+function startRecording() {
+  const canvasEl = document.querySelector('canvas');
+  if (!canvasEl || !canvasEl.captureStream || !window.MediaRecorder) {
+    toast(IS_IOS ? 'iOS: REC LIMITED' : 'REC NOT SUPPORTED');
+    return;
+  }
+  try {
+    drawVideoOnCanvasForRecording = true;
+    const stream = canvasEl.captureStream(IS_MOBILE ? 30 : 60);
+    const candidates = ['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm','video/mp4;codecs=h264','video/mp4'];
+    let mimeType = '';
+    for (const candidate of candidates) {
+      if (MediaRecorder.isTypeSupported(candidate)) {
+        mimeType = candidate;
+        break;
+      }
+    }
+    if (!mimeType) {
+      drawVideoOnCanvasForRecording = false;
+      toast('REC NOT SUPPORTED');
+      return;
+    }
+    mediaRecorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: IS_MOBILE ? 4000000 : 8000000 });
+    recordedChunks = [];
+    mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) recordedChunks.push(e.data); };
+    mediaRecorder.onstop = () => {
+      drawVideoOnCanvasForRecording = false;
+      const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
+      const blob = new Blob(recordedChunks, { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      a.href = url;
+      a.download = `cats-cradle-${ts}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+      toast(`SAVED ${(blob.size / 1048576).toFixed(1)} MB`);
+    };
+    mediaRecorder.start(1000);
+    recording = true;
+    recordStartTime = Date.now();
+    ctrlRec.classList.add('rec-active');
+    recIndicator.classList.add('active');
+    if (recTimerInterval) clearInterval(recTimerInterval);
+    recTimerInterval = setInterval(updateRecTime, 250);
+    updateRecTime();
+    toast('RECORDING');
+  } catch (err) {
+    drawVideoOnCanvasForRecording = false;
+    toast('REC ERROR: ' + (err.name || err.message));
+    recording = false;
+  }
+}
+
+function stopRecording() {
+  if (!mediaRecorder) return;
+  try { if (mediaRecorder.state !== 'inactive') mediaRecorder.stop(); } catch (_) {}
+  recording = false;
+  ctrlRec.classList.remove('rec-active');
+  recIndicator.classList.remove('active');
+  if (recTimerInterval) {
+    clearInterval(recTimerInterval);
+    recTimerInterval = null;
+  }
+}
+
+function updateRecTime() {
+  const s = Math.floor((Date.now() - recordStartTime) / 1000);
+  recTimeEl.textContent = `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
+}
+
+function takeSnapshot() {
+  if (mode === 'idle') { toast('START SESSION FIRST'); return; }
+  const canvasEl = document.querySelector('canvas');
+  if (!canvasEl) return;
+  const wasFlag = drawVideoOnCanvasForRecording;
+  drawVideoOnCanvasForRecording = true;
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    canvasEl.toBlob((blob) => {
+      drawVideoOnCanvasForRecording = wasFlag;
+      if (!blob) { toast('SNAP FAILED'); return; }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      a.href = url;
+      a.download = `cats-cradle-${ts}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+      toast('SAVED');
+    }, 'image/png');
+  }));
+}
+
+function toggleFullscreen() {
+  const el = document.documentElement;
+  if (document.fullscreenElement || document.webkitFullscreenElement) {
+    const exit = document.exitFullscreen || document.webkitExitFullscreen;
+    if (exit) exit.call(document);
+  } else {
+    const req = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (req) {
+      const result = req.call(el);
+      if (result && result.catch) result.catch(() => toast('FS UNAVAILABLE'));
+    }
+  }
+}
+
+async function requestWakeLock() {
+  if (!('wakeLock' in navigator)) return;
+  try {
+    if (!wakeLock) {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => { wakeLock = null; });
+    }
+  } catch (_) {}
+}
+
+function releaseWakeLock() {
+  if (wakeLock) {
+    try { wakeLock.release(); } catch (_) {}
+    wakeLock = null;
+  }
+}
+
+function toast(text) {
+  toastEl.textContent = text;
+  toastEl.classList.add('show');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1700);
+}
+
+function onKeyDown(e) {
+  if (!overlayEl.classList.contains('hidden')) return;
+  switch (e.key) {
+    case 'r': case 'R': e.preventDefault(); toggleRecording(); break;
+    case 'p': case 'P': case ' ': e.preventDefault(); togglePause(); break;
+    case 'c': case 'C': e.preventDefault(); flipCamera(); break;
+    case 'v': case 'V': e.preventDefault(); toggleVideoBg(); break;
+    case 's': case 'S': e.preventDefault(); takeSnapshot(); break;
+    case 'f': case 'F': e.preventDefault(); toggleFullscreen(); break;
+    case 'Escape': e.preventDefault(); backToMenu(); break;
+  }
+}
+
+function buildDemoHand(side, t) {
+  const w = width, h = height;
+  const handSizePx = Math.min(w, h) * 0.22;
+  const baseXPx = w * (0.5 + side * (0.20 + Math.sin(t * 0.0009) * 0.06));
+  const baseYPx = h * (0.55 + Math.cos(t * 0.0007 + side) * 0.05);
+  const rot = side * (0.05 + Math.sin(t * 0.0011) * 0.25);
+  const cs = Math.cos(rot), sn = Math.sin(rot);
+  const lm = new Array(21);
+  for (let i = 0; i < 21; i++) {
+    const tpl = HAND_TEMPLATE[i];
+    let wiggleX = 0, wiggleY = 0;
+    if (i >= 1) {
+      const fingerIdx = Math.floor((i - 1) / 4);
+      const segIdx = (i - 1) % 4;
+      const phase = t * 0.002 + fingerIdx * 0.7 + side * 1.3;
+      const amp = 0.06 * (segIdx + 1) * 0.25;
+      wiggleX = Math.sin(phase) * amp;
+      wiggleY = Math.cos(phase * 1.3) * amp;
+    }
+    const localX = (side < 0 ? -tpl.x : tpl.x) + wiggleX;
+    const localY = tpl.y + wiggleY;
+    const rx = localX * cs - localY * sn;
+    const ry = localX * sn + localY * cs;
+    const px = baseXPx + rx * handSizePx;
+    const py = baseYPx + ry * handSizePx;
+    lm[i] = { x: 1 - (px / w), y: py / h, z: 0 };
+  }
+  return lm;
+}
+
+function updateDemoHands(t) {
+  rawHands.left = buildDemoHand(-1, t);
+  rawHands.right = buildDemoHand(1, t);
+  handsEl.textContent = 'HANDS: 2';
+}
+
+function lmToScreen(lm) {
+  const mirror = (mode === 'camera') ? (facing === 'user') : true;
+  const x = mirror ? (1 - lm.x) * width : lm.x * width;
+  return { x, y: lm.y * height };
+}
+
+function smoothLandmarks(prev, next, alpha = 0.55) {
+  if (!prev || prev.length !== next.length) return next.map(p => ({ x: p.x, y: p.y, z: p.z || 0 }));
+  return next.map((p, i) => ({
+    x: prev[i].x + (p.x - prev[i].x) * alpha,
+    y: prev[i].y + (p.y - prev[i].y) * alpha,
+    z: prev[i].z + ((p.z || 0) - prev[i].z) * alpha,
+  }));
+}
+
+window.draw = function draw() {
+  drawBackground();
+
+  if (!paused) {
+    if (mode === 'demo') updateDemoHands(millis());
+    smoothedHands.left = rawHands.left ? smoothLandmarks(smoothedHands.left, rawHands.left) : null;
+    smoothedHands.right = rawHands.right ? smoothLandmarks(smoothedHands.right, rawHands.right) : null;
+  }
+
+  if (smoothedHands.left) drawHandSilhouette(smoothedHands.left, [94, 234, 255]);
+  if (smoothedHands.right) drawHandSilhouette(smoothedHands.right, [255, 94, 220]);
+
+  const maxStringDist = Math.min(Math.min(width, height) * 1.0, 700);
+  let avgTension = 0, tCount = 0;
+  if (smoothedHands.left && smoothedHands.right) {
+    for (let f = 0; f < FINGERTIPS.length; f++) {
+      const a = lmToScreen(smoothedHands.left[FINGERTIPS[f]]);
+      const b = lmToScreen(smoothedHands.right[FINGERTIPS[f]]);
+      const tension = drawString(a, b, STRING_COLORS[f], f, maxStringDist);
+      avgTension += tension;
+      tCount++;
+      if (!paused) {
+        const d = dist(a.x, a.y, b.x, b.y);
+        const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
+        if (d < 38) {
+          if (touchCooldown[f] <= 0) {
+            spawnExplosion(cx, cy, STRING_COLORS[f]);
+            touchCooldown[f] = 9;
+          }
+          if (random() < 0.65) spawnSparks(cx, cy, STRING_COLORS[f], 2);
+        }
+        touchCooldown[f]--;
+      }
+    }
+  }
+  if (smoothedHands.left) drawFingertipGlows(smoothedHands.left);
+  if (smoothedHands.right) drawFingertipGlows(smoothedHands.right);
+  updateParticles(paused);
+
+  frameCounter++;
+  const now = millis();
+  if (now - lastFpsAt > 500) {
+    fps = round((frameCounter * 1000) / (now - lastFpsAt));
+    frameCounter = 0;
+    lastFpsAt = now;
+    fpsEl.textContent = `${fps} FPS`;
+  }
+  if (tCount > 0) {
+    const t = avgTension / tCount;
+    const filled = round(t * 8);
+    tensionEl.textContent = `TENSION ${'█'.repeat(filled)}${'░'.repeat(8 - filled)}`;
+  } else {
+    tensionEl.textContent = 'TENSION ░░░░░░░░';
+  }
+
+  if (mode === 'camera' && banner.classList.contains('active')) {
+    const vw = videoEl ? videoEl.videoWidth : 0;
+    const vh = videoEl ? videoEl.videoHeight : 0;
+    statsEl.textContent = `VIDEO ${vw}x${vh}  ·  detect attempts ${totalDetectAttempts}  ·  results ${totalResults}  ·  hands seen ${totalHandsSeen}`;
+  }
+};
+
+function drawBackground() {
+  const ctx = drawingContext;
+
+  if (drawVideoOnCanvasForRecording && mode === 'camera' && videoEl && videoEl.videoWidth) {
+    const vw = videoEl.videoWidth, vh = videoEl.videoHeight;
+    const cr = width / height, vr = vw / vh;
+    let dw, dh, dx, dy;
+    if (vr > cr) {
+      dh = height;
+      dw = dh * vr;
+      dx = (width - dw) / 2;
+      dy = 0;
+    } else {
+      dw = width;
+      dh = dw / vr;
+      dx = 0;
+      dy = (height - dh) / 2;
+    }
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, width, height);
+    ctx.save();
+    if (facing === 'user') {
+      ctx.translate(width, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(videoEl, width - dx - dw, dy, dw, dh);
+    } else {
+      ctx.drawImage(videoEl, dx, dy, dw, dh);
+    }
+    ctx.restore();
+    ctx.fillStyle = 'rgba(4, 6, 26, 0.55)';
+    ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = 'rgba(40, 30, 90, 0.18)';
+    ctx.fillRect(0, 0, width, height);
+    return;
+  }
+
+  if (bgMode === 'video' && mode === 'camera') {
+    clear();
+    ctx.fillStyle = 'rgba(4, 6, 26, 0.45)';
+    ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = 'rgba(40, 30, 90, 0.12)';
+    ctx.fillRect(0, 0, width, height);
+    return;
+  }
+
+  ctx.fillStyle = '#04061a';
+  ctx.fillRect(0, 0, width, height);
+  const g = ctx.createRadialGradient(width * 0.5, height * 0.55, 0, width * 0.5, height * 0.55, max(width, height) * 0.7);
+  g.addColorStop(0, 'rgba(40,32,95,0.40)');
+  g.addColorStop(0.4, 'rgba(15,18,50,0.22)');
+  g.addColorStop(1, 'rgba(0,0,10,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, width, height);
+  const drift = sin(millis() * 0.0002) * 4;
+  ctx.strokeStyle = 'rgba(94,234,255,0.07)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 6; i++) {
+    const y = height * 0.72 + drift + i * i * 9;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(width, y);
+    ctx.stroke();
+  }
+}
+
+function drawHandSilhouette(landmarks, color) {
+  const ctx = drawingContext;
+  const [r, g, b] = color;
+  ctx.save();
+  ctx.fillStyle = `rgba(${r},${g},${b},0.07)`;
+  ctx.shadowBlur = 28;
+  ctx.shadowColor = `rgb(${r},${g},${b})`;
+  ctx.beginPath();
+  for (let i = 0; i < PALM_HULL.length; i++) {
+    const p = lmToScreen(landmarks[PALM_HULL[i]]);
+    if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.shadowBlur = 26;
+  ctx.shadowColor = `rgb(${r},${g},${b})`;
+  ctx.strokeStyle = `rgba(${r},${g},${b},0.22)`;
+  ctx.lineWidth = 9;
+  strokeConnections(landmarks, ctx);
+  ctx.shadowBlur = 14;
+  ctx.strokeStyle = `rgba(${r},${g},${b},0.6)`;
+  ctx.lineWidth = 3.5;
+  strokeConnections(landmarks, ctx);
+  ctx.shadowBlur = 6;
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.lineWidth = 1.2;
+  strokeConnections(landmarks, ctx);
+  for (let i = 0; i < landmarks.length; i++) {
+    const p = lmToScreen(landmarks[i]);
+    const isTip = FINGERTIPS.includes(i);
+    const radius = isTip ? 5 : 3;
+    ctx.shadowBlur = 14;
+    ctx.shadowColor = `rgb(${r},${g},${b})`;
+    ctx.fillStyle = `rgb(${r},${g},${b})`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, radius, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, radius * 0.45, 0, TAU);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function strokeConnections(landmarks, ctx) {
+  for (const [a, b] of HAND_CONNECTIONS) {
+    const pa = lmToScreen(landmarks[a]);
+    const pb = lmToScreen(landmarks[b]);
+    ctx.beginPath();
+    ctx.moveTo(pa.x, pa.y);
+    ctx.lineTo(pb.x, pb.y);
+    ctx.stroke();
+  }
+}
+
+function drawFingertipGlows(landmarks) {
+  const ctx = drawingContext;
+  ctx.save();
+  for (let f = 0; f < FINGERTIPS.length; f++) {
+    const p = lmToScreen(landmarks[FINGERTIPS[f]]);
+    const c = STRING_COLORS[f];
+    ctx.shadowBlur = 30;
+    ctx.shadowColor = `rgb(${c[0]},${c[1]},${c[2]})`;
+    ctx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},0.55)`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 8, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 2.6, 0, TAU);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawString(a, b, color, idx, maxDist) {
+  const ctx = drawingContext;
+  const [r, g, bl] = color;
+  const d = dist(a.x, a.y, b.x, b.y);
+  const tension = constrain(map(d, 60, maxDist, 0, 1), 0, 1);
+  const sag = lerp(70, 3, tension) + sin(millis() * 0.003 + idx) * 1.5;
+  const midX = (a.x + b.x) / 2;
+  const midY = (a.y + b.y) / 2 + sag;
+  const v = tension > 0.75 ? random(-1, 1) * (tension - 0.75) * 8 : 0;
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.shadowBlur = lerp(18, 38, tension);
+  ctx.shadowColor = `rgb(${r},${g},${bl})`;
+  ctx.lineWidth = lerp(8, 14, tension);
+  ctx.strokeStyle = `rgba(${r},${g},${bl},${lerp(0.18, 0.32, tension)})`;
+  ctx.beginPath();
+  ctx.moveTo(a.x, a.y);
+  ctx.quadraticCurveTo(midX + v, midY + v, b.x, b.y);
+  ctx.stroke();
+  ctx.shadowBlur = lerp(10, 22, tension);
+  ctx.lineWidth = lerp(3, 5, tension);
+  ctx.strokeStyle = `rgba(${r},${g},${bl},${lerp(0.6, 0.95, tension)})`;
+  ctx.beginPath();
+  ctx.moveTo(a.x, a.y);
+  ctx.quadraticCurveTo(midX + v * 0.5, midY + v * 0.5, b.x, b.y);
+  ctx.stroke();
+  ctx.shadowBlur = 6;
+  ctx.lineWidth = lerp(0.9, 1.7, tension);
+  ctx.strokeStyle = `rgba(255,255,255,${lerp(0.7, 0.98, tension)})`;
+  ctx.beginPath();
+  ctx.moveTo(a.x, a.y);
+  ctx.quadraticCurveTo(midX, midY, b.x, b.y);
+  ctx.stroke();
+  ctx.restore();
+  return tension;
+}
+
+function spawnExplosion(x, y, color) {
+  for (let i = 0; i < 28; i++) {
+    const ang = (i / 28) * TAU + random(-0.2, 0.2);
+    const sp = random(2, 8);
+    particles.push({
+      x, y, vx: cos(ang) * sp, vy: sin(ang) * sp, life: 1,
+      decay: random(0.012, 0.025), color, size: random(2, 4.5), core: true
+    });
+  }
+  particles.push({ x, y, vx: 0, vy: 0, life: 1, decay: 0.05, color, size: 10, ring: true });
+}
+
+function spawnSparks(x, y, color, count = 3) {
+  for (let i = 0; i < count; i++) {
+    const ang = random(TAU);
+    const sp = random(0.5, 3);
+    particles.push({
+      x: x + random(-3, 3), y: y + random(-3, 3),
+      vx: cos(ang) * sp, vy: sin(ang) * sp - 1, life: 1,
+      decay: random(0.02, 0.04), color, size: random(1.5, 3)
+    });
+  }
+}
+
+function updateParticles(frozen) {
+  const ctx = drawingContext;
+  ctx.save();
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    if (!frozen) {
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += 0.12;
+      p.vx *= 0.985;
+      p.vy *= 0.985;
+      p.life -= p.decay;
+      if (p.life <= 0) {
+        particles.splice(i, 1);
+        continue;
+      }
+    }
+    const [r, g, bl] = p.color;
+    if (p.ring) {
+      const radius = (1 - p.life) * 80;
+      ctx.shadowBlur = 25;
+      ctx.shadowColor = `rgb(${r},${g},${bl})`;
+      ctx.strokeStyle = `rgba(${r},${g},${bl},${p.life * 0.85})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, radius, 0, TAU);
+      ctx.stroke();
+    } else {
+      ctx.shadowBlur = 14;
+      ctx.shadowColor = `rgb(${r},${g},${bl})`;
+      ctx.fillStyle = `rgba(${r},${g},${bl},${p.life})`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size * p.life, 0, TAU);
+      ctx.fill();
+      if (p.core) {
+        ctx.fillStyle = `rgba(255,255,255,${p.life * 0.9})`;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size * p.life * 0.4, 0, TAU);
+        ctx.fill();
+      }
+    }
+  }
+  ctx.restore();
+}
+</script>
+</body>
+</html>
